@@ -86,10 +86,12 @@ fn dirs_next_dir() -> PathBuf {
 pub fn load_settings() -> Settings {
     let path = get_settings_file_path();
     if path.exists() {
-        if let Ok(content) = fs::read_to_string(&path) {
-            if let Ok(settings) = serde_json::from_str::<Settings>(&content) {
-                return settings;
-            }
+        match fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<Settings>(&content) {
+                Ok(settings) => return settings,
+                Err(e) => eprintln!("[Settings] Failed to parse settings.json: {}. Using defaults.", e),
+            },
+            Err(e) => eprintln!("[Settings] Failed to read settings.json: {}. Using defaults.", e),
         }
     }
 

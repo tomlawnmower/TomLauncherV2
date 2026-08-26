@@ -27,16 +27,7 @@ pub fn activate_window(app: &tauri::AppHandle) {
 
         if settings.center_mouse_on_startup {
             let _ = window.center();
-
-            #[cfg(target_os = "windows")]
-            {
-                use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SetCursorPos, SM_CXSCREEN, SM_CYSCREEN};
-                unsafe {
-                    let width = GetSystemMetrics(SM_CXSCREEN);
-                    let height = GetSystemMetrics(SM_CYSCREEN);
-                    SetCursorPos(width / 2, height / 2);
-                }
-            }
+            commands::center_mouse_cursor_internal();
         }
     }
 }

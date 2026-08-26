@@ -155,6 +155,18 @@ pub fn calculate_grid_window_dimensions(
     }
 }
 
+pub fn center_mouse_cursor_internal() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SetCursorPos, SM_CXSCREEN, SM_CYSCREEN};
+        unsafe {
+            let width = GetSystemMetrics(SM_CXSCREEN);
+            let height = GetSystemMetrics(SM_CYSCREEN);
+            SetCursorPos(width / 2, height / 2);
+        }
+    }
+}
+
 #[tauri::command]
 pub fn resize_window_to_grid(
     window: tauri::WebviewWindow,
@@ -200,16 +212,7 @@ pub fn resize_window_to_grid(
     let settings = settings::load_settings();
     if settings.center_mouse_on_startup {
         let _ = window.center();
-
-        #[cfg(target_os = "windows")]
-        {
-            use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SetCursorPos, SM_CXSCREEN, SM_CYSCREEN};
-            unsafe {
-                let width = GetSystemMetrics(SM_CXSCREEN);
-                let height = GetSystemMetrics(SM_CYSCREEN);
-                SetCursorPos(width / 2, height / 2);
-            }
-        }
+        center_mouse_cursor_internal();
     }
 
     Ok(())
@@ -553,17 +556,7 @@ pub fn pick_image() -> Option<String> {
 #[tauri::command]
 pub fn center_cursor(window: tauri::Window) -> Result<(), String> {
     let _ = window.center();
-
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SetCursorPos, SM_CXSCREEN, SM_CYSCREEN};
-        unsafe {
-            let width = GetSystemMetrics(SM_CXSCREEN);
-            let height = GetSystemMetrics(SM_CYSCREEN);
-            SetCursorPos(width / 2, height / 2);
-        }
-    }
-
+    center_mouse_cursor_internal();
     Ok(())
 }
 

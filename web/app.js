@@ -29,10 +29,12 @@ async function invoke(cmd, args) {
     return;
   }
   if (cmd === 'extract_icon') {
-    return 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzNiODJmNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj48cGF0aCBkPSJNMTQgMkg2Yy0xLjEgMC0xLjk5LjktMS45OSAyTDQgMjBjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWODlsLTYtNnptMiAxNkg4di0yaDh2MnptMC00SDh2LTJoOHYJem0tMy01VjMuNUwxOC41IDlIMTN6Ii8+PC9zdmc+';
+    return FALLBACK_SVG_ICON;
   }
   return null;
 }
+
+const FALLBACK_SVG_ICON = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzNiODJmNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj48cGF0aCBkPSJNMTQgMkg2Yy0xLjEgMC0xLjk5LjktMS45OSAyTDQgMjBjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWODlsLTYtNnptMiAxNkg4di0yaDh2MnptMC00SDh2LTJoOHYJem0tMy01VjMuNUwxOC41IDlIMTN6Ii8+PC9zdmc+';
 
 // Global App State
 const state = {
@@ -359,7 +361,7 @@ function createCellElement(row, col, shortcut) {
     if (customImg && customImg.trim() !== '') {
       img.src = customImg;
     } else {
-      img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzNiODJmNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj48cGF0aCBkPSJNMTQgMkg2Yy0xLjEgMC0xLjk5LjktMS45OSAyTDQgMjBjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWODlsLTYtNnptMiAxNkg4di0yaDh2MnptMC00SDh2LTJoOHYJem0tMy01VjMuNUwxOC41IDlIMTN6Ii8+PC9zdmc+';
+      img.src = FALLBACK_SVG_ICON;
       getCachedIcon(path)
         .then(iconData => { if (iconData) img.src = iconData; })
         .catch(() => {});
@@ -531,7 +533,7 @@ function createDragGhost(shortcut, x, y) {
   const img = document.createElement('img');
   img.className = 'cell-icon';
   const customImg = getShortcutImage(shortcut);
-  img.src = customImg || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzNiODJmNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj48cGF0aCBkPSJNMTQgMkg2Yy0xLjEgMC0xLjk5LjktMS45OSAyTDQgMjBjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWODlsLTYtNnptMiAxNkg4di0yaDh2MnptMC00SDh2LTJoOHYJem0tMy01VjMuNUwxOC41IDlIMTN6Ii8+PC9zdmc+';
+  img.src = customImg || FALLBACK_SVG_ICON;
 
   const name = document.createElement('span');
   name.className = 'cell-name';
@@ -1003,6 +1005,34 @@ function setupEventListeners() {
     closeSettingsModal();
     renderGrid();
     fitWindowToGrid();
+  });
+
+  // Modal Backdrop Click Dismiss Listeners
+  if (elements.modalEdit) {
+    elements.modalEdit.addEventListener('click', (e) => {
+      if (e.target === elements.modalEdit) {
+        closeEditModal();
+      }
+    });
+  }
+  if (elements.modalSettings) {
+    elements.modalSettings.addEventListener('click', (e) => {
+      if (e.target === elements.modalSettings) {
+        closeSettingsModal();
+      }
+    });
+  }
+
+  // Global Escape Key Listener for Modals
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (elements.modalEdit && !elements.modalEdit.classList.contains('hidden')) {
+        closeEditModal();
+      }
+      if (elements.modalSettings && !elements.modalSettings.classList.contains('hidden')) {
+        closeSettingsModal();
+      }
+    }
   });
 }
 
