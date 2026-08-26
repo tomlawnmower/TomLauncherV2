@@ -1,0 +1,13 @@
+{
+  "name": "tomlauncher",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml && node --test web/test/*.test.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
