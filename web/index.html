@@ -59,7 +59,7 @@
     <!-- Status / Hint Bar -->
     <footer id="app-footer">
       <div id="status-hint">
-        <span class="hint-key">Shift + Click</span> or <span class="hint-key">Right Click</span> to queue items | Drag &amp; Drop files onto grid cells
+        <span class="hint-key">Shift + Click</span> or <span class="hint-key">Right Click</span> to queue items
       </div>
     </footer>
   </div>
@@ -120,12 +120,12 @@
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group half">
-            <label for="setting-rows">Rows (1-10)</label>
-            <input type="number" id="setting-rows" min="1" max="10" value="5">
+            <label for="setting-rows">Rows (1-20)</label>
+            <input type="number" id="setting-rows" min="1" max="20" value="5">
           </div>
           <div class="form-group half">
-            <label for="setting-cols">Columns (1-10)</label>
-            <input type="number" id="setting-cols" min="1" max="10" value="5">
+            <label for="setting-cols">Columns (1-20)</label>
+            <input type="number" id="setting-cols" min="1" max="20" value="5">
           </div>
         </div>
         <div class="form-row">
@@ -148,12 +148,47 @@
             <span>Center mouse cursor and window on shortcut activation</span>
           </label>
         </div>
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="setting-debug-logging">
+            <span>Enable debug logging to debug.log</span>
+          </label>
+        </div>
         <div class="form-group">
           <label for="setting-theme">Color Theme</label>
           <select id="setting-theme">
             <option value="dark">Dark Theme (Default)</option>
             <option value="light">Light Theme</option>
           </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <div class="label-with-action">
+              <label for="setting-cell-color">Cell Color</label>
+              <button type="button" id="btn-reset-cell-color" class="link-btn">Reset</button>
+            </div>
+            <div class="color-picker-input">
+              <input type="color" id="setting-cell-color" value="#222630">
+              <input type="text" id="setting-cell-color-text" class="color-text-input" value="#222630" placeholder="#222630">
+            </div>
+          </div>
+          <div class="form-group half">
+            <div class="label-with-action">
+              <label for="setting-highlight-color">Highlight Color</label>
+              <button type="button" id="btn-reset-highlight-color" class="link-btn">Reset</button>
+            </div>
+            <div class="color-picker-input">
+              <input type="color" id="setting-highlight-color" value="#2d3240">
+              <input type="text" id="setting-highlight-color-text" class="color-text-input" value="#2d3240" placeholder="#2d3240">
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="setting-filepath">Settings File Location</label>
+          <div class="input-with-button">
+            <input type="text" id="setting-filepath" readonly value="" placeholder="Settings file path">
+            <button type="button" id="btn-open-settings-folder" class="btn secondary">Open Folder</button>
+          </div>
         </div>
       </div>
       <div class="modal-footer">

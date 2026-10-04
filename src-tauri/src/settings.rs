@@ -6,6 +6,10 @@ fn default_theme() -> String {
     "dark".to_string()
 }
 
+fn default_enable_debug_logging() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShortcutEntry {
     pub row: usize,
@@ -31,8 +35,14 @@ pub struct Settings {
     pub key: String,
     #[serde(rename = "centerMouseOnStartup")]
     pub center_mouse_on_startup: bool,
+    #[serde(default = "default_enable_debug_logging", rename = "enableDebugLogging")]
+    pub enable_debug_logging: bool,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default, rename = "cellColor")]
+    pub cell_color: Option<String>,
+    #[serde(default, rename = "highlightColor")]
+    pub highlight_color: Option<String>,
     #[serde(rename = "shortcutList")]
     pub shortcut_list: Vec<ShortcutEntry>,
 }
@@ -47,7 +57,10 @@ impl Default for Settings {
             modifier: "Alt+Shift".to_string(),
             key: "Z".to_string(),
             center_mouse_on_startup: false,
+            enable_debug_logging: false,
             theme: "dark".to_string(),
+            cell_color: None,
+            highlight_color: None,
             shortcut_list: Vec::new(),
         }
     }
@@ -83,12 +96,22 @@ fn dirs_next_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+pub fn clamp_settings(settings: &mut Settings) {
+    settings.rows = settings.rows.clamp(1, 20);
+    settings.columns = settings.columns.clamp(1, 20);
+    settings.cell_width = settings.cell_width.clamp(80, 400);
+    settings.cell_height = settings.cell_height.clamp(30, 150);
+}
+
 pub fn load_settings() -> Settings {
     let path = get_settings_file_path();
     if path.exists() {
         match fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<Settings>(&content) {
-                Ok(settings) => return settings,
+                Ok(mut settings) => {
+                    clamp_settings(&mut settings);
+                    return settings;
+                }
                 Err(e) => eprintln!("[Settings] Failed to parse settings.json: {}. Using defaults.", e),
             },
             Err(e) => eprintln!("[Settings] Failed to read settings.json: {}. Using defaults.", e),
@@ -101,12 +124,14 @@ pub fn load_settings() -> Settings {
 }
 
 pub fn save_settings(settings: &Settings) -> Result<(), String> {
+    let mut clean_settings = settings.clone();
+    clamp_settings(&mut clean_settings);
     let dir = get_settings_dir();
     if !dir.exists() {
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     }
     let path = get_settings_file_path();
-    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&clean_settings).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -157,5 +182,36 @@ mod tests {
         assert_eq!(deserialized.shortcut_list[0].name, "Schtasks");
         assert_eq!(deserialized.shortcut_list[0].shortcut_location, "C:\\Windows\\System32\\schtasks.exe");
         assert_eq!(deserialized.shortcut_list[0].arguments, Some("/run /tn \"Arknights\"".to_string()));
+    }
+
+    #[test]
+    fn test_custom_color_serialization() {
+        let mut s = Settings::default();
+        s.cell_color = Some("#123456".to_string());
+        s.highlight_color = Some("#654321".to_string());
+
+        let json = serde_json::to_string(&s).expect("Serialization failed");
+        assert!(json.contains("\"cellColor\":\"#123456\""));
+        assert!(json.contains("\"highlightColor\":\"#654321\""));
+
+        let deserialized: Settings = serde_json::from_str(&json).expect("Deserialization failed");
+        assert_eq!(deserialized.cell_color, Some("#123456".to_string()));
+        assert_eq!(deserialized.highlight_color, Some("#654321".to_string()));
+    }
+
+    #[test]
+    fn test_clamp_settings() {
+        let mut s = Settings {
+            rows: 99,
+            columns: 0,
+            cell_width: 10,
+            cell_height: 500,
+            ..Default::default()
+        };
+        clamp_settings(&mut s);
+        assert_eq!(s.rows, 20);
+        assert_eq!(s.columns, 1);
+        assert_eq!(s.cell_width, 80);
+        assert_eq!(s.cell_height, 150);
     }
 }

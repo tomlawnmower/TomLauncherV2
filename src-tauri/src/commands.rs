@@ -18,7 +18,15 @@ pub struct ResolvedShortcut {
     pub icon_path: Option<String>,
 }
 
-fn log_to_file(msg: &str) {
+pub fn should_log(enable_debug_logging: bool) -> bool {
+    enable_debug_logging
+}
+
+pub fn log_to_file(msg: &str) {
+    let settings = settings::load_settings();
+    if !should_log(settings.enable_debug_logging) {
+        return;
+    }
     let mut log_path = settings::get_settings_dir();
     log_path.push("debug.log");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
@@ -135,9 +143,9 @@ pub fn calculate_grid_window_dimensions(
     let grid_width = (columns * cell_width as usize) + (columns.saturating_sub(1) * 1);
     let grid_height = (rows * cell_height as usize) + (rows.saturating_sub(1) * 1);
 
-    // Header: 48px, Footer: 28px, Main padding: 2px (1px top/bottom, 1px left/right)
+    // Header: 48px, Footer: 28px, Main side padding: 2px (0px top/bottom, 1px left/right)
     let required_width = (grid_width + 2).max(320) as f64;
-    let required_height = (grid_height + 48 + 28 + 2) as f64;
+    let required_height = (grid_height + 48 + 28) as f64;
 
     let target_width = required_width + extra_w;
     let target_height = required_height + extra_h;
@@ -175,19 +183,7 @@ pub fn resize_window_to_grid(
     cell_width: u32,
     cell_height: u32,
 ) -> Result<(), String> {
-    let (extra_w, extra_h) = if let (Ok(outer), Ok(inner)) = (window.outer_size(), window.inner_size()) {
-        let sf = window.scale_factor().unwrap_or(1.0);
-        let outer_log = outer.to_logical::<f64>(sf);
-        let inner_log = inner.to_logical::<f64>(sf);
-        (
-            (outer_log.width - inner_log.width).max(0.0),
-            (outer_log.height - inner_log.height).max(0.0),
-        )
-    } else {
-        (0.0, 0.0)
-    };
-
-    let dims = calculate_grid_window_dimensions(rows, columns, cell_width, cell_height, extra_w, extra_h);
+    let dims = calculate_grid_window_dimensions(rows, columns, cell_width, cell_height, 0.0, 0.0);
 
     let max_size = tauri::Size::Logical(tauri::LogicalSize {
         width: dims.max_width,
@@ -560,6 +556,32 @@ pub fn center_cursor(window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    println!("[IPC] hide_window requested: hiding window to system tray");
+    log_to_file("[IPC] hide_window requested: hiding window to system tray");
+    let _ = window.hide();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_settings_path() -> String {
+    let path = settings::get_settings_file_path();
+    path.to_string_lossy().to_string()
+}
+
+#[tauri::command]
+pub fn open_settings_folder() -> Result<(), String> {
+    let dir = settings::get_settings_dir();
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    let msg = format!("[IPC] open_settings_folder: opening '{:?}'", dir);
+    println!("{}", msg);
+    log_to_file(&msg);
+    open::that(&dir).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,9 +709,9 @@ mod tests {
         let dims = calculate_grid_window_dimensions(rows, columns, cell_width, cell_height, 0.0, 0.0);
 
         assert_eq!(dims.required_width, 756.0);
-        assert_eq!(dims.required_height, 282.0);
+        assert_eq!(dims.required_height, 280.0);
         assert_eq!(dims.max_width, 756.0, "Maximum width must equal visible grid width");
-        assert_eq!(dims.max_height, 282.0, "Maximum height must equal visible grid height");
+        assert_eq!(dims.max_height, 280.0, "Maximum height must equal visible grid height");
         assert!(dims.min_width <= dims.max_width);
         assert!(dims.min_height <= dims.max_height);
     }
@@ -701,5 +723,17 @@ mod tests {
         let expanded = expand_windows_env_vars(path);
         assert!(!expanded.contains("%SystemRoot%"));
         assert!(expanded.to_lowercase().contains("system32"));
+    }
+
+    #[test]
+    fn test_get_settings_path() {
+        let p = get_settings_path();
+        assert!(p.ends_with("settings.json"), "get_settings_path must end with settings.json");
+    }
+
+    #[test]
+    fn test_should_log_flag() {
+        assert!(should_log(true), "should_log(true) must be true");
+        assert!(!should_log(false), "should_log(false) must be false");
     }
 }

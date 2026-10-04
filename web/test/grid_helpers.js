@@ -177,7 +177,7 @@ function calculateGridWindowDimensions(rows, columns, cellWidth, cellHeight, ext
   const gridHeight = (rows * cellHeight) + (Math.max(0, rows - 1) * 1);
 
   const requiredWidth = Math.max(320, gridWidth + 2);
-  const requiredHeight = gridHeight + 48 + 28 + 2;
+  const requiredHeight = gridHeight + 48 + 28;
 
   const targetWidth = requiredWidth + extraW;
   const targetHeight = requiredHeight + extraH;
@@ -195,6 +195,96 @@ function calculateGridWindowDimensions(rows, columns, cellWidth, cellHeight, ext
   };
 }
 
+function getFooterHintText(mode) {
+  if (mode === 'edit') {
+    return 'Drag & Drop files onto grid cells to add shortcuts';
+  }
+  return 'Shift + Click or Right Click to queue items';
+}
+
+function handleEscapeKeyAction(isEditModalOpen, isSettingsModalOpen) {
+  if (isEditModalOpen) {
+    return 'close_edit_modal';
+  }
+  if (isSettingsModalOpen) {
+    return 'close_settings_modal';
+  }
+  return 'hide_window';
+}
+
+function getThemeDefaultColors(theme) {
+  if (theme === 'light') {
+    return {
+      cellColor: '#f1f5f9',
+      highlightColor: '#e2e8f0'
+    };
+  }
+  return {
+    cellColor: '#222630',
+    highlightColor: '#2d3240'
+  };
+}
+
+function normalizeHexColor(val, fallback = '#222630') {
+  if (!val) return fallback;
+  let str = String(val).trim();
+  if (!str.startsWith('#')) {
+    str = '#' + str;
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(str)) {
+    return str.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(str)) {
+    const r = str[1], g = str[2], b = str[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return fallback;
+}
+
+function getEffectiveCellColors(settings = {}) {
+  const theme = settings.theme || 'dark';
+  const defaults = getThemeDefaultColors(theme);
+  const cellColor = normalizeHexColor(settings.cellColor, defaults.cellColor);
+  const highlightColor = normalizeHexColor(settings.highlightColor, defaults.highlightColor);
+  return { cellColor, highlightColor };
+}
+
+function resolveThemeChangeColors(previousTheme, newTheme, currentCellColor, currentHighlightColor) {
+  const prevDefaults = getThemeDefaultColors(previousTheme);
+  const newDefaults = getThemeDefaultColors(newTheme);
+
+  const normCurrentCell = normalizeHexColor(currentCellColor, prevDefaults.cellColor);
+  const normPrevDefaultCell = prevDefaults.cellColor.toLowerCase();
+
+  const normCurrentHighlight = normalizeHexColor(currentHighlightColor, prevDefaults.highlightColor);
+  const normPrevDefaultHighlight = prevDefaults.highlightColor.toLowerCase();
+
+  const isCellCustom = normCurrentCell !== normPrevDefaultCell;
+  const isHighlightCustom = normCurrentHighlight !== normPrevDefaultHighlight;
+
+  return {
+    cellColor: isCellCustom ? normCurrentCell : newDefaults.cellColor,
+    highlightColor: isHighlightCustom ? normCurrentHighlight : newDefaults.highlightColor,
+    isCellCustom,
+    isHighlightCustom
+  };
+}
+
+function clampSettingsValue(val, min, max) {
+  const num = parseInt(val, 10);
+  if (isNaN(num)) return min;
+  return Math.max(min, Math.min(max, num));
+}
+
+function convertPhysicalToLogicalPosition(pos, scaleFactor = 1) {
+  if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') return null;
+  const dpi = scaleFactor > 0 ? scaleFactor : 1;
+  return {
+    x: pos.x / dpi,
+    y: pos.y / dpi
+  };
+}
+
 module.exports = {
   getShortcutLocation,
   getShortcutName,
@@ -208,5 +298,14 @@ module.exports = {
   toggleQueue,
   getExecutionQueueList,
   extractFileNameFromPath,
-  calculateGridWindowDimensions
+  calculateGridWindowDimensions,
+  getFooterHintText,
+  handleEscapeKeyAction,
+  getThemeDefaultColors,
+  normalizeHexColor,
+  getEffectiveCellColors,
+  resolveThemeChangeColors,
+  clampSettingsValue,
+  convertPhysicalToLogicalPosition
 };
+

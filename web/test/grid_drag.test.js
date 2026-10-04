@@ -7,7 +7,15 @@ const {
   toggleQueue,
   getExecutionQueueList,
   extractFileNameFromPath,
-  calculateGridWindowDimensions
+  calculateGridWindowDimensions,
+  getFooterHintText,
+  handleEscapeKeyAction,
+  getThemeDefaultColors,
+  normalizeHexColor,
+  getEffectiveCellColors,
+  resolveThemeChangeColors,
+  clampSettingsValue,
+  convertPhysicalToLogicalPosition
 } = require('./grid_helpers.js');
 
 test('findShortcut - matches numeric and string row/col coordinates', () => {
@@ -110,21 +118,17 @@ test('theme preference persistence in state.settings', () => {
   const settings = {
     rows: 5,
     columns: 5,
-    theme: 'dark'
+    theme: 'light',
+    enableDebugLogging: true
   };
 
-  assert.equal(settings.theme, 'dark');
-
-  // Change theme to light
-  settings.theme = 'light';
-  assert.equal(settings.theme, 'light');
-
-  // Serialize and deserialize JSON matching backend settings
   const jsonStr = JSON.stringify(settings);
   assert.ok(jsonStr.includes('"theme":"light"'));
+  assert.ok(jsonStr.includes('"enableDebugLogging":true'));
 
   const parsed = JSON.parse(jsonStr);
   assert.equal(parsed.theme, 'light');
+  assert.equal(parsed.enableDebugLogging, true);
 });
 
 test('window close event interception decision logic', () => {
@@ -295,9 +299,112 @@ test('calculateGridWindowDimensions - enforces maximum bounds to visible grid ce
   const dims = calculateGridWindowDimensions(5, 5, 150, 40);
 
   assert.equal(dims.requiredWidth, 756);
-  assert.equal(dims.requiredHeight, 282);
+  assert.equal(dims.requiredHeight, 280);
   assert.equal(dims.maxWidth, 756, 'Max width must equal visible grid width');
-  assert.equal(dims.maxHeight, 282, 'Max height must equal visible grid height');
+  assert.equal(dims.maxHeight, 280, 'Max height must equal visible grid height');
   assert.ok(dims.minWidth <= dims.maxWidth, 'Min width must be less than or equal to max width');
   assert.ok(dims.minHeight <= dims.maxHeight, 'Min height must be less than or equal to max height');
 });
+
+test('getFooterHintText - returns dynamic mode-dependent footer hint text', () => {
+  assert.equal(getFooterHintText('launch'), 'Shift + Click or Right Click to queue items');
+  assert.equal(getFooterHintText('edit'), 'Drag & Drop files onto grid cells to add shortcuts');
+});
+
+test('pressing ESC key hides program to system tray when no modal is open', () => {
+  // Case 1: No modal open -> hide window to system tray
+  assert.equal(handleEscapeKeyAction(false, false), 'hide_window', 'ESC with no modal open must hide window to tray');
+
+  // Case 2: Edit modal open -> close edit modal
+  assert.equal(handleEscapeKeyAction(true, false), 'close_edit_modal', 'ESC with edit modal open must close edit modal');
+
+  // Case 3: Settings modal open -> close settings modal
+  assert.equal(handleEscapeKeyAction(false, true), 'close_settings_modal', 'ESC with settings modal open must close settings modal');
+});
+
+test('getThemeDefaultColors - dark and light theme default cell and highlight colors', () => {
+  const darkDefaults = getThemeDefaultColors('dark');
+  assert.equal(darkDefaults.cellColor, '#222630');
+  assert.equal(darkDefaults.highlightColor, '#2d3240');
+
+  const lightDefaults = getThemeDefaultColors('light');
+  assert.equal(lightDefaults.cellColor, '#f1f5f9');
+  assert.equal(lightDefaults.highlightColor, '#e2e8f0');
+});
+
+test('normalizeHexColor - normalizes hex strings', () => {
+  assert.equal(normalizeHexColor('#FF0000', '#000000'), '#ff0000');
+  assert.equal(normalizeHexColor('123456', '#000000'), '#123456');
+  assert.equal(normalizeHexColor('#F00', '#000000'), '#ff0000');
+  assert.equal(normalizeHexColor('invalid', '#222630'), '#222630');
+});
+
+test('resolveThemeChangeColors - default colors update on theme change, custom colors are preserved', () => {
+  // Case 1: Dark to Light with default colors -> updates to Light defaults
+  const res1 = resolveThemeChangeColors('dark', 'light', '#222630', '#2d3240');
+  assert.equal(res1.cellColor, '#f1f5f9', 'Default dark cell color should change to light default');
+  assert.equal(res1.highlightColor, '#e2e8f0', 'Default dark highlight color should change to light default');
+  assert.equal(res1.isCellCustom, false);
+  assert.equal(res1.isHighlightCustom, false);
+
+  // Case 2: Dark to Light with custom cell color and default highlight color -> preserves custom cell color
+  const res2 = resolveThemeChangeColors('dark', 'light', '#ff0000', '#2d3240');
+  assert.equal(res2.cellColor, '#ff0000', 'Custom cell color must be preserved when theme changes');
+  assert.equal(res2.highlightColor, '#e2e8f0', 'Default highlight color should change to light default');
+  assert.equal(res2.isCellCustom, true);
+  assert.equal(res2.isHighlightCustom, false);
+
+  // Case 3: Light to Dark with custom cell color and custom highlight color -> preserves both custom colors
+  const res3 = resolveThemeChangeColors('light', 'dark', '#ff0000', '#00ff00');
+  assert.equal(res3.cellColor, '#ff0000', 'Custom cell color must be preserved when theme changes');
+  assert.equal(res3.highlightColor, '#00ff00', 'Custom highlight color must be preserved when theme changes');
+  assert.equal(res3.isCellCustom, true);
+  assert.equal(res3.isHighlightCustom, true);
+});
+
+test('reset link resets cell color and highlight color back to selected theme defaults', () => {
+  let cellColor = '#ff0000'; // Custom
+  let highlightColor = '#00ff00'; // Custom
+
+  // Reset cell color for dark theme
+  const darkDefaults = getThemeDefaultColors('dark');
+  cellColor = darkDefaults.cellColor;
+  assert.equal(cellColor, '#222630');
+
+  // Reset highlight color for light theme
+  const lightDefaults = getThemeDefaultColors('light');
+  highlightColor = lightDefaults.highlightColor;
+  assert.equal(highlightColor, '#e2e8f0');
+});
+
+test('clampSettingsValue - clamps out of bounds row, col, width, and height values', () => {
+  assert.equal(clampSettingsValue(25, 1, 20), 20, 'Rows/cols > 20 should be clamped to 20');
+  assert.equal(clampSettingsValue(0, 1, 20), 1, 'Rows/cols < 1 should be clamped to 1');
+  assert.equal(clampSettingsValue(-5, 1, 20), 1, 'Negative rows/cols should be clamped to 1');
+  assert.equal(clampSettingsValue(500, 80, 400), 400, 'Width > 400 should be clamped to 400');
+  assert.equal(clampSettingsValue(10, 30, 150), 30, 'Height < 30 should be clamped to 30');
+  assert.equal(clampSettingsValue('invalid', 1, 20), 1, 'NaN inputs should fallback to min value');
+});
+
+test('convertPhysicalToLogicalPosition - converts Tauri drag-drop physical screen coordinates to CSS logical pixels across OS scaling levels', () => {
+  // 100% DPI Scaling (devicePixelRatio = 1.0)
+  const pos100 = convertPhysicalToLogicalPosition({ x: 250, y: 200 }, 1.0);
+  assert.deepEqual(pos100, { x: 250, y: 200 });
+
+  // 125% DPI Scaling (devicePixelRatio = 1.25)
+  const pos125 = convertPhysicalToLogicalPosition({ x: 250, y: 250 }, 1.25);
+  assert.deepEqual(pos125, { x: 200, y: 200 });
+
+  // 150% DPI Scaling (devicePixelRatio = 1.5)
+  const pos150 = convertPhysicalToLogicalPosition({ x: 300, y: 300 }, 1.5);
+  assert.deepEqual(pos150, { x: 200, y: 200 });
+
+  // 200% DPI Scaling (devicePixelRatio = 2.0)
+  const pos200 = convertPhysicalToLogicalPosition({ x: 400, y: 400 }, 2.0);
+  assert.deepEqual(pos200, { x: 200, y: 200 });
+
+  // Edge cases / missing position
+  assert.equal(convertPhysicalToLogicalPosition(null, 1.25), null);
+  assert.equal(convertPhysicalToLogicalPosition({}, 1.25), null);
+});
+

@@ -31,6 +31,13 @@ async function invoke(cmd, args) {
   if (cmd === 'extract_icon') {
     return FALLBACK_SVG_ICON;
   }
+  if (cmd === 'get_settings_path') {
+    return 'C:\\Users\\User\\AppData\\Roaming\\TomLauncherV2\\settings.json';
+  }
+  if (cmd === 'open_settings_folder') {
+    console.log('[Mock Invoke] open_settings_folder');
+    return true;
+  }
   return null;
 }
 
@@ -46,7 +53,10 @@ const state = {
     modifier: "Alt+Shift",
     key: "Z",
     centerMouseOnStartup: false,
+    enableDebugLogging: false,
     theme: "dark",
+    cellColor: undefined,
+    highlightColor: undefined,
     shortcutList: []
   },
   mode: 'launch', // 'launch' | 'edit'
@@ -96,7 +106,16 @@ function initElements() {
     settingHeight: document.getElementById('setting-height'),
     settingHotkey: document.getElementById('setting-hotkey'),
     settingCenterMouse: document.getElementById('setting-center-mouse'),
+    settingDebugLogging: document.getElementById('setting-debug-logging'),
     settingTheme: document.getElementById('setting-theme'),
+    settingCellColor: document.getElementById('setting-cell-color'),
+    settingCellColorText: document.getElementById('setting-cell-color-text'),
+    btnResetCellColor: document.getElementById('btn-reset-cell-color'),
+    settingHighlightColor: document.getElementById('setting-highlight-color'),
+    settingHighlightColorText: document.getElementById('setting-highlight-color-text'),
+    btnResetHighlightColor: document.getElementById('btn-reset-highlight-color'),
+    settingFilepath: document.getElementById('setting-filepath'),
+    btnOpenSettingsFolder: document.getElementById('btn-open-settings-folder'),
     btnSaveSettings: document.getElementById('btn-save-settings'),
     btnCancelSettings: document.getElementById('btn-cancel-settings'),
     btnCloseSettings: document.getElementById('btn-close-settings'),
@@ -217,9 +236,7 @@ async function executeShortcut(shortcut) {
     alert(`Failed to launch shortcut (${name}):\nPath: ${path}\nError: ${err}`);
   } finally {
     setTimeout(() => {
-      if (elements.statusHint) {
-        elements.statusHint.innerHTML = `<span class="hint-key">Shift + Click</span> to queue multiple items | Drag &amp; Drop files onto grid cells`;
-      }
+      updateFooterHint();
     }, 2500);
   }
 }
@@ -245,6 +262,13 @@ function fitWindowToGrid() {
   }).catch(() => {});
 }
 
+// Hide application window to system tray
+function hideWindow() {
+  invoke('hide_window').catch((err) => {
+    console.error('Failed to hide window:', err);
+  });
+}
+
 // Initialize Application
 async function init() {
   initElements();
@@ -258,6 +282,69 @@ async function init() {
   }
 }
 
+// Theme & Custom Color Utilities
+function getThemeDefaultColors(theme) {
+  if (theme === 'light') {
+    return {
+      cellColor: '#f1f5f9',
+      highlightColor: '#e2e8f0'
+    };
+  }
+  return {
+    cellColor: '#222630',
+    highlightColor: '#2d3240'
+  };
+}
+
+function normalizeHexColor(val, fallback = '#222630') {
+  if (!val) return fallback;
+  let str = String(val).trim();
+  if (!str.startsWith('#')) {
+    str = '#' + str;
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(str)) {
+    return str.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(str)) {
+    const r = str[1], g = str[2], b = str[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return fallback;
+}
+
+function applyThemeAndColors() {
+  const theme = state.settings.theme || 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+
+  const defaults = getThemeDefaultColors(theme);
+  const cellColor = normalizeHexColor(state.settings.cellColor, defaults.cellColor);
+  const highlightColor = normalizeHexColor(state.settings.highlightColor, defaults.highlightColor);
+
+  document.documentElement.style.setProperty('--cell-color', cellColor);
+  document.documentElement.style.setProperty('--highlight-color', highlightColor);
+}
+
+function resolveThemeChangeColors(previousTheme, newTheme, currentCellColor, currentHighlightColor) {
+  const prevDefaults = getThemeDefaultColors(previousTheme);
+  const newDefaults = getThemeDefaultColors(newTheme);
+
+  const normCurrentCell = normalizeHexColor(currentCellColor, prevDefaults.cellColor);
+  const normPrevDefaultCell = prevDefaults.cellColor.toLowerCase();
+
+  const normCurrentHighlight = normalizeHexColor(currentHighlightColor, prevDefaults.highlightColor);
+  const normPrevDefaultHighlight = prevDefaults.highlightColor.toLowerCase();
+
+  const isCellCustom = normCurrentCell !== normPrevDefaultCell;
+  const isHighlightCustom = normCurrentHighlight !== normPrevDefaultHighlight;
+
+  return {
+    cellColor: isCellCustom ? normCurrentCell : newDefaults.cellColor,
+    highlightColor: isHighlightCustom ? normCurrentHighlight : newDefaults.highlightColor,
+    isCellCustom,
+    isHighlightCustom
+  };
+}
+
 // Load Settings from Backend
 async function loadSettings() {
   try {
@@ -266,7 +353,7 @@ async function loadSettings() {
       state.settings = loaded;
     }
     if (!state.settings.theme) state.settings.theme = 'dark';
-    document.documentElement.setAttribute('data-theme', state.settings.theme);
+    applyThemeAndColors();
     if (elements.settingTheme) {
       elements.settingTheme.value = state.settings.theme;
     }
@@ -281,6 +368,16 @@ async function saveSettings() {
     await invoke('save_settings', { settings: state.settings });
   } catch (err) {
     console.error('Failed to save settings:', err);
+  }
+}
+
+// Update dynamic footer hint text based on active mode
+function updateFooterHint() {
+  if (!elements.statusHint) return;
+  if (state.mode === 'edit') {
+    elements.statusHint.innerHTML = 'Drag &amp; Drop files onto grid cells to add shortcuts';
+  } else {
+    elements.statusHint.innerHTML = '<span class="hint-key">Shift + Click</span> or <span class="hint-key">Right Click</span> to queue items';
   }
 }
 
@@ -302,12 +399,13 @@ function renderGrid() {
     }
   }
 
-  // Update Body Mode Class
+  // Update Body Mode Class & Footer Hint
   if (state.mode === 'edit') {
     document.body.classList.add('edit-mode');
   } else {
     document.body.classList.remove('edit-mode');
   }
+  updateFooterHint();
 }
 
 // Find shortcut for cell (1-indexed) - coerce to Number
@@ -658,6 +756,15 @@ async function handleExternalFileDrop(e, dstRow, dstCol) {
   }
 }
 
+function convertPhysicalToLogicalPosition(pos, scaleFactor = window.devicePixelRatio || 1) {
+  if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') return null;
+  const dpi = scaleFactor > 0 ? scaleFactor : 1;
+  return {
+    x: pos.x / dpi,
+    y: pos.y / dpi
+  };
+}
+
 // Tauri 2.0 Native Window File Drop Listener
 function setupTauriFileDropListener() {
   if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
@@ -669,7 +776,9 @@ function setupTauriFileDropListener() {
       const pos = event.payload && event.payload.position ? event.payload.position : null;
 
       if (paths.length > 0 && pos) {
-        const targetEl = document.elementFromPoint(pos.x, pos.y);
+        const scaleFactor = window.devicePixelRatio || 1;
+        const logicalPos = convertPhysicalToLogicalPosition(pos, scaleFactor);
+        const targetEl = logicalPos ? document.elementFromPoint(logicalPos.x, logicalPos.y) : null;
         const cellEl = targetEl ? targetEl.closest('.cell-shortcut') : null;
         if (cellEl) {
           const dstRow = Number(cellEl.dataset.row);
@@ -760,6 +869,8 @@ async function updateIconPreview() {
   }
 }
 
+let lastSettingsModalTheme = 'dark';
+
 function openSettingsModal() {
   elements.settingRows.value = state.settings.rows;
   elements.settingCols.value = state.settings.columns;
@@ -767,7 +878,30 @@ function openSettingsModal() {
   elements.settingHeight.value = state.settings.cellHeight;
   elements.settingHotkey.value = `${state.settings.modifier}+${state.settings.key}`;
   elements.settingCenterMouse.checked = state.settings.centerMouseOnStartup;
-  elements.settingTheme.value = state.settings.theme || 'dark';
+  if (elements.settingDebugLogging) {
+    elements.settingDebugLogging.checked = !!state.settings.enableDebugLogging;
+  }
+  
+  const theme = state.settings.theme || 'dark';
+  elements.settingTheme.value = theme;
+  lastSettingsModalTheme = theme;
+
+  const defaults = getThemeDefaultColors(theme);
+  const cellColor = normalizeHexColor(state.settings.cellColor, defaults.cellColor);
+  const highlightColor = normalizeHexColor(state.settings.highlightColor, defaults.highlightColor);
+
+  if (elements.settingCellColor) elements.settingCellColor.value = cellColor;
+  if (elements.settingCellColorText) elements.settingCellColorText.value = cellColor;
+  if (elements.settingHighlightColor) elements.settingHighlightColor.value = highlightColor;
+  if (elements.settingHighlightColorText) elements.settingHighlightColorText.value = highlightColor;
+
+  invoke('get_settings_path')
+    .then((pathStr) => {
+      if (elements.settingFilepath && pathStr) {
+        elements.settingFilepath.value = pathStr;
+      }
+    })
+    .catch((err) => console.error('Failed to get settings path:', err));
 
   elements.modalSettings.classList.remove('hidden');
 }
@@ -970,6 +1104,75 @@ function setupEventListeners() {
     });
   }
 
+  // Settings Theme & Color Picker Event Listeners
+  if (elements.settingTheme) {
+    elements.settingTheme.addEventListener('change', (e) => {
+      const newTheme = e.target.value;
+      const currentCell = elements.settingCellColorText ? elements.settingCellColorText.value : '';
+      const currentHighlight = elements.settingHighlightColorText ? elements.settingHighlightColorText.value : '';
+
+      const resolved = resolveThemeChangeColors(lastSettingsModalTheme, newTheme, currentCell, currentHighlight);
+      lastSettingsModalTheme = newTheme;
+
+      if (elements.settingCellColor) elements.settingCellColor.value = resolved.cellColor;
+      if (elements.settingCellColorText) elements.settingCellColorText.value = resolved.cellColor;
+      if (elements.settingHighlightColor) elements.settingHighlightColor.value = resolved.highlightColor;
+      if (elements.settingHighlightColorText) elements.settingHighlightColorText.value = resolved.highlightColor;
+    });
+  }
+
+  if (elements.settingCellColor && elements.settingCellColorText) {
+    elements.settingCellColor.addEventListener('input', (e) => {
+      elements.settingCellColorText.value = e.target.value;
+    });
+    elements.settingCellColorText.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (/^#?[0-9a-fA-F]{6}$/.test(val)) {
+        elements.settingCellColor.value = normalizeHexColor(val);
+      }
+    });
+  }
+
+  if (elements.settingHighlightColor && elements.settingHighlightColorText) {
+    elements.settingHighlightColor.addEventListener('input', (e) => {
+      elements.settingHighlightColorText.value = e.target.value;
+    });
+    elements.settingHighlightColorText.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (/^#?[0-9a-fA-F]{6}$/.test(val)) {
+        elements.settingHighlightColor.value = normalizeHexColor(val);
+      }
+    });
+  }
+
+  if (elements.btnResetCellColor) {
+    elements.btnResetCellColor.addEventListener('click', () => {
+      const theme = (elements.settingTheme && elements.settingTheme.value) || 'dark';
+      const defaultColor = getThemeDefaultColors(theme).cellColor;
+      if (elements.settingCellColor) elements.settingCellColor.value = defaultColor;
+      if (elements.settingCellColorText) elements.settingCellColorText.value = defaultColor;
+    });
+  }
+
+  if (elements.btnResetHighlightColor) {
+    elements.btnResetHighlightColor.addEventListener('click', () => {
+      const theme = (elements.settingTheme && elements.settingTheme.value) || 'dark';
+      const defaultColor = getThemeDefaultColors(theme).highlightColor;
+      if (elements.settingHighlightColor) elements.settingHighlightColor.value = defaultColor;
+      if (elements.settingHighlightColorText) elements.settingHighlightColorText.value = defaultColor;
+    });
+  }
+
+  if (elements.btnOpenSettingsFolder) {
+    elements.btnOpenSettingsFolder.addEventListener('click', async () => {
+      try {
+        await invoke('open_settings_folder');
+      } catch (err) {
+        console.error('Failed to open settings folder:', err);
+      }
+    });
+  }
+
   // Settings Modal Buttons
   elements.btnCancelSettings.addEventListener('click', closeSettingsModal);
   elements.btnCloseSettings.addEventListener('click', closeSettingsModal);
@@ -981,11 +1184,22 @@ function setupEventListeners() {
   }
 
   elements.btnSaveSettings.addEventListener('click', async () => {
-    state.settings.rows = parseInt(elements.settingRows.value, 10) || 5;
-    state.settings.columns = parseInt(elements.settingCols.value, 10) || 5;
-    state.settings.cellWidth = parseInt(elements.settingWidth.value, 10) || 150;
-    state.settings.cellHeight = parseInt(elements.settingHeight.value, 10) || 40;
+    const clampVal = (val, min, max) => Math.max(min, Math.min(max, val));
+
+    state.settings.rows = clampVal(parseInt(elements.settingRows.value, 10) || 5, 1, 20);
+    state.settings.columns = clampVal(parseInt(elements.settingCols.value, 10) || 5, 1, 20);
+    state.settings.cellWidth = clampVal(parseInt(elements.settingWidth.value, 10) || 150, 80, 400);
+    state.settings.cellHeight = clampVal(parseInt(elements.settingHeight.value, 10) || 40, 30, 150);
+
+    elements.settingRows.value = state.settings.rows;
+    elements.settingCols.value = state.settings.columns;
+    elements.settingWidth.value = state.settings.cellWidth;
+    elements.settingHeight.value = state.settings.cellHeight;
+
     state.settings.centerMouseOnStartup = elements.settingCenterMouse.checked;
+    if (elements.settingDebugLogging) {
+      state.settings.enableDebugLogging = elements.settingDebugLogging.checked;
+    }
 
     const hotkeyStr = elements.settingHotkey.value.trim();
     if (hotkeyStr.includes('+')) {
@@ -999,7 +1213,15 @@ function setupEventListeners() {
 
     const theme = elements.settingTheme.value || 'dark';
     state.settings.theme = theme;
-    document.documentElement.setAttribute('data-theme', theme);
+
+    const cellColorVal = (elements.settingCellColorText && elements.settingCellColorText.value.trim()) || (elements.settingCellColor && elements.settingCellColor.value);
+    const highlightColorVal = (elements.settingHighlightColorText && elements.settingHighlightColorText.value.trim()) || (elements.settingHighlightColor && elements.settingHighlightColor.value);
+
+    const themeDefaults = getThemeDefaultColors(theme);
+    state.settings.cellColor = normalizeHexColor(cellColorVal, themeDefaults.cellColor);
+    state.settings.highlightColor = normalizeHexColor(highlightColorVal, themeDefaults.highlightColor);
+
+    applyThemeAndColors();
 
     await saveSettings();
     closeSettingsModal();
@@ -1023,14 +1245,18 @@ function setupEventListeners() {
     });
   }
 
-  // Global Escape Key Listener for Modals
+  // Global Escape Key Listener (closes modals if open, else hides window to tray)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (elements.modalEdit && !elements.modalEdit.classList.contains('hidden')) {
+      const isEditModalOpen = elements.modalEdit && !elements.modalEdit.classList.contains('hidden');
+      const isSettingsModalOpen = elements.modalSettings && !elements.modalSettings.classList.contains('hidden');
+
+      if (isEditModalOpen) {
         closeEditModal();
-      }
-      if (elements.modalSettings && !elements.modalSettings.classList.contains('hidden')) {
+      } else if (isSettingsModalOpen) {
         closeSettingsModal();
+      } else {
+        hideWindow();
       }
     }
   });
